@@ -1,0 +1,23 @@
+# 개인 설정 (작성자 이메일 등 개인정보 포함) — 커밋하지 않는다.
+# 배포용 템플릿은 config.example.json 을 참고.
+config.json
+
+# --init 이 만드는 Windows 배치 래퍼 (머신별 python 경로가 박힘)
+run_weekly.bat
+
+# 생성된 주간 노트 (개인 업무 내용)
+주간 작업 정리/
+
+# 실행 로그
+logs/
+
+# 파이썬 캐시
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Obsidian 개인 작업 상태 (선택) — 설정만 공유하고 싶으면 workspace 만 무시
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json

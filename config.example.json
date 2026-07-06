@@ -1,0 +1,9 @@
+{
+  "week_start": "월",
+  "author_regex": "홍길동|gildong@example.com",
+  "repos_root": "~",
+  "vault_dir": "~/weekly-log",
+  "notes_subdir": "주간 작업 정리",
+  "scan_maxdepth": 2,
+  "summary_model": "sonnet"
+}
