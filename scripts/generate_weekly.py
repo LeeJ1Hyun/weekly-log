@@ -24,10 +24,12 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote
 from pathlib import Path
 
 # ───────────────────────── 설정 ─────────────────────────
@@ -572,6 +574,106 @@ def install_schtasks(week_start: int, hour: int) -> None:
           f"schtasks /Delete /TN {task_name} /F")
 
 
+# ───────────────────────── Obsidian 연동 ─────────────────────────
+
+def obsidian_config_path() -> Path | None:
+    """Obsidian 이 vault 목록을 저장하는 obsidian.json 경로 (OS 별)."""
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "Application Support"
+                / "obsidian" / "obsidian.json")
+    if sys.platform.startswith("win"):
+        appdata = os.environ.get("APPDATA")
+        return Path(appdata) / "obsidian" / "obsidian.json" if appdata else None
+    return Path.home() / ".config" / "obsidian" / "obsidian.json"
+
+
+def list_obsidian_vaults() -> list[Path]:
+    """Obsidian 에 등록된 기존 vault 경로 목록(존재하는 폴더만)."""
+    p = obsidian_config_path()
+    if not p or not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return []
+    vaults = []
+    for v in (data.get("vaults") or {}).values():
+        raw = v.get("path")
+        if raw and Path(raw).is_dir():
+            vaults.append(Path(raw))
+    return sorted(set(vaults), key=str)
+
+
+def create_obsidian_vault(path: Path) -> None:
+    """폴더를 Obsidian vault 로 만든다(.obsidian 생성). 열면 등록된다."""
+    path.mkdir(parents=True, exist_ok=True)
+    dot = path / ".obsidian"
+    dot.mkdir(exist_ok=True)
+    app = dot / "app.json"
+    if not app.exists():                 # 최소 설정. 나머지는 Obsidian 이 채운다.
+        app.write_text("{}\n", encoding="utf-8")
+
+
+def open_in_obsidian(vault_dir: Path) -> bool:
+    """obsidian://open URI 로 vault 를 연다(설치돼 있으면 등록+열림). 성공 여부 반환."""
+    uri = f"obsidian://open?path={quote(str(vault_dir.resolve()))}"
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", uri], check=True, capture_output=True)
+        elif sys.platform.startswith("win"):
+            os.startfile(uri)            # type: ignore[attr-defined]
+        else:
+            subprocess.run(["xdg-open", uri], check=True, capture_output=True)
+        return True
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def choose_vault_dir(default_dir: str) -> tuple[str, bool]:
+    """노트 저장 폴더를 정한다. Obsidian vault 를 인식·생성·선택한다.
+
+    반환: (vault_dir 문자열, obsidian 연결 여부).
+    """
+    vaults = list_obsidian_vaults()
+
+    # 기존 vault 가 없음 → 생성할지 물어본다.
+    if not vaults:
+        print("      (등록된 Obsidian vault 를 찾지 못했습니다.)")
+        if _prompt("새 Obsidian vault 를 생성할까요? (Y/n)", "Y").lower() \
+                in ("y", "yes"):
+            target = _prompt("vault 로 만들 폴더", default_dir)
+            create_obsidian_vault(Path(target).expanduser())
+            print(f"      → vault 생성: {target}")
+            return target, True
+        return _prompt("노트 저장 폴더", default_dir), False
+
+    # 기존 vault 가 있음 → 목록에서 고르게 한다.
+    print("      기존 Obsidian vault 를 찾았습니다. 노트를 어디에 저장할까요?")
+    for i, v in enumerate(vaults, 1):
+        print(f"        {i}) {v}")
+    n = len(vaults)
+    print(f"        {n + 1}) 새 vault 생성")
+    print(f"        {n + 2}) Obsidian 연결 없이 그냥 폴더에 저장")
+    while True:
+        sel = _prompt("번호 선택", "1")
+        if not sel.isdigit():
+            print("      숫자로 입력하세요.")
+            continue
+        k = int(sel)
+        if 1 <= k <= n:
+            chosen = str(vaults[k - 1])
+            print(f"      → '{chosen}' vault 안에 저장합니다.")
+            return chosen, True
+        if k == n + 1:
+            target = _prompt("vault 로 만들 폴더", default_dir)
+            create_obsidian_vault(Path(target).expanduser())
+            print(f"      → vault 생성: {target}")
+            return target, True
+        if k == n + 2:
+            return _prompt("노트 저장 폴더", default_dir), False
+        print(f"      1 ~ {n + 2} 사이 번호를 입력하세요.")
+
+
 def run_init() -> int:
     """다운로드 직후 1회 실행하는 대화형 초기 설정. config.json 을 만든다."""
     print("=" * 56)
@@ -608,10 +710,9 @@ def run_init() -> int:
     print("\n[3/5] git 저장소들이 모여 있는 상위 폴더 (그 아래 2단계까지 탐색).")
     repos_root = _prompt("저장소 루트", "~")
 
-    # 4) 노트 저장 위치
-    print("\n[4/5] 생성된 주간 노트(.md)를 저장할 폴더.")
-    print("      Obsidian 을 쓰면 이 폴더를 vault 로 열면 됩니다(없어도 그냥 .md 파일).")
-    vault_dir = _prompt("노트 저장 폴더", str(CONFIG_PATH.parent))
+    # 4) 노트 저장 위치 + Obsidian 연결 (기존 vault 선택 / 신규 생성 / 연결 안 함)
+    print("\n[4/5] 생성된 주간 노트(.md)를 저장할 폴더 (= Obsidian vault).")
+    vault_dir, obsidian_linked = choose_vault_dir(str(CONFIG_PATH.parent))
 
     # 5) 회고 요약 모델
     print("\n[5/5] 회고 요약에 쓸 claude 모델 (claude CLI 없으면 자동 건너뜀).")
@@ -650,6 +751,17 @@ def run_init() -> int:
     else:
         print("\n(자동 실행 등록은 macOS/Windows 에서 지원합니다. "
               "Linux 등은 cron 으로 run_weekly.sh 를 예약하세요.)")
+
+    # Obsidian 으로 지금 열기 (연결을 선택한 경우에만 물어본다)
+    if obsidian_linked:
+        if _prompt("\n지금 Obsidian 으로 이 vault 를 열까요? (Y/n)", "Y").lower() \
+                in ("y", "yes"):
+            if open_in_obsidian(Path(vault_dir).expanduser()):
+                print("  [OK] Obsidian 으로 여는 중... (설치돼 있으면 vault 가 열립니다)")
+            else:
+                print("  [!] Obsidian 을 열지 못했습니다. 설치돼 있는지 확인하세요:")
+                print("      https://obsidian.md/download")
+                print(f"      수동: Obsidian → 'Open folder as vault' → {vault_dir}")
 
     print("\n완료! 지금 한 번 미리보기:")
     print("  python generate_weekly.py --dry-run")

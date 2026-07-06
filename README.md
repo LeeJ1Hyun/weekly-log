@@ -28,12 +28,33 @@ python3 generate_weekly.py --init      # ← 대화형 초기 설정
 2. **작성자** — '내 커밋'을 식별할 이름/이메일 (여러 개면 `|` 로 구분).
    `git config --global user.name/user.email` 값을 기본값으로 제안합니다.
 3. **저장소 루트** — git 저장소들이 모여 있는 상위 폴더 (그 아래 2단계까지 탐색).
-4. **노트 저장 폴더** — 생성된 `.md` 를 저장할 곳 (Obsidian vault 로 열어도 됨).
+4. **노트 저장 폴더 (= Obsidian vault)** — Obsidian 과 연결합니다. 자세한 동작은
+   아래 [Obsidian 과 연결](#obsidian-과-연결-선택) 참고.
 5. **회고 요약 모델** — `claude` CLI 로 쓸 모델(없으면 자동 건너뜀).
 
-macOS 라면 이어서 **매주 자동 실행(launchd) 등록** 여부와 실행 시각도 물어봅니다.
-완료되면 `config.json` 이 생성됩니다(개인정보 포함 → `.gitignore` 로 커밋 제외).
-템플릿은 `config.example.json` 참고.
+이어서 **매주 자동 실행 등록**(macOS launchd / Windows 작업 스케줄러)과, Obsidian 과
+연결한 경우 **지금 vault 를 열지** 물어봅니다. 완료되면 `config.json` 이
+생성됩니다(개인정보 포함 → `.gitignore` 로 커밋 제외). 템플릿은
+`config.example.json` 참고.
+
+## Obsidian 과 연결 (선택)
+
+이 툴은 평범한 `.md` 파일을 만들 뿐이고, "연결" 이란 그 노트 폴더를 Obsidian 이
+**vault 로 열게 하는 것**입니다. `--init` 의 4단계가 OS 에 등록된 Obsidian vault
+목록을 읽어 상황에 맞게 안내합니다.
+
+- **기존 vault 가 있으면** — 그 목록을 보여주고 고르게 합니다. 고른 vault 안에
+  노트가 쌓이도록 `vault_dir` 이 그 경로로 설정됩니다.
+  (또는 "새 vault 생성" / "연결 없이 그냥 폴더에 저장" 선택 가능)
+- **vault 가 하나도 없으면** — "새 vault 를 생성할까요?" 를 물어보고, 예를 고르면
+  지정한 폴더를 vault(`.obsidian` 생성)로 만듭니다.
+- 연결한 경우, 마지막에 **"지금 Obsidian 으로 열까요?"** 를 물어봅니다. 예를 고르면
+  `obsidian://open` URI 로 vault 를 엽니다(등록까지). Obsidian 이 없으면 조용히
+  실패하고 [다운로드 링크](https://obsidian.md/download)와 수동 방법을 안내합니다.
+
+> 노트의 `> [!summary]` callout·frontmatter 태그는 **플러그인 없이 기본 렌더링**되므로
+> 추가 설정은 필요 없습니다. 수동으로 열려면 Obsidian → *Open folder as vault* →
+> 노트 저장 폴더 선택.
 
 > `--init` 을 다시 실행하면 기존 `config.json` 을 덮어쓸지 물어봅니다.
 > 요일 하나만 바꾸고 싶으면 `config.json` 의 `week_start` 값만 직접 고쳐도 됩니다.
