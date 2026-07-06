@@ -203,3 +203,7 @@ schtasks /Create /TN weekly-log /SC WEEKLY /D FRI /ST 09:00 ^
 # 예: 매주 월요일 09시 (주 시작이 월요일일 때). cron 요일: 일=0 … 토=6
 0 9 * * 1  /path/to/weekly-log/scripts/run_weekly.sh
 ```
+
+## 라이선스
+
+[MIT](LICENSE)
